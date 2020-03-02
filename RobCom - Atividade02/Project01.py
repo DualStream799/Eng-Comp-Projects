@@ -194,7 +194,7 @@ while True:
 				sheet_distance = round(sheet_height*frame_distance/frame_height, 2)
 
 	if display_mode == 'brisk':
-		#
+		# Flips briks again in order to let the words on the right direction (the image displayed is flipped):
 		brisk_frame = cv2.flip(bgr_frame.copy(), 1)
 		# Loads the logo:
 		logo = cv2.imread('logo.png')
