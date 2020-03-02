@@ -3,13 +3,47 @@
 
 __author__ = "DualStream799"
 
-
+# Importing Libraries:
 from matplotlib import pyplot as plt
 from heapq import nlargest
-from math import degrees, sqrt
+from math import atan, degrees, sqrt
 import numpy as np
 import time
 import cv2
+# Importing function from external source:
+#from homography import find_homography_draw_box
+
+
+def find_homography_draw_box(kp1, kp2, img_cena, img_original, good):
+    
+    out = img_cena.copy()
+    
+    src_pts = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
+    dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
+
+
+    # Tenta achar uma trasformacao composta de rotacao, translacao e escala que situe uma imagem na outra
+    # Esta transformação é chamada de homografia 
+    # Para saber mais veja 
+    # https://docs.opencv.org/3.4/d9/dab/tutorial_homography.html
+    M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
+    matchesMask = mask.ravel().tolist()
+
+
+    
+    h,w = img_original.shape
+    # Um retângulo com as dimensões da imagem original
+    pts = np.float32([ [0,0],[0,h-1],[w-1,h-1],[w-1,0] ]).reshape(-1,1,2)
+
+    # Transforma os pontos do retângulo para onde estao na imagem destino usando a homografia encontrada
+    dst = cv2.perspectiveTransform(pts,M)
+
+
+    # Desenha um contorno em vermelho ao redor de onde o objeto foi encontrado
+    img2b = cv2.polylines(out,[np.int32(dst)],True,(255,255,0),5, cv2.LINE_AA)
+    
+    return img2b
+
 
 
 def frame_flip(capture, flip=False, flip_mode=0):
@@ -22,7 +56,7 @@ def frame_flip(capture, flip=False, flip_mode=0):
 	ret, frame = capture.read()
 	# Invert captured frame:
 	if flip == True:
-		return cv2.flip(frame, 20)
+		return cv2.flip(frame, 1)
 	else:
 		return frame
 
@@ -38,7 +72,7 @@ def text_on_frame(frame, text, position, thickness, font_size=1, text_color=(255
 
 def angular_coefficient(point1, point2, decimals=0):
 	"""Calculates the angular coefficient if a line between two points using the current formula: (y - y0) = m*(x - x0)"""
-	return round(degrees((point2[1] - point1[1])/(point2[0] - point1[0])), decimals)
+	return round(degrees(atan((point2[1] - point1[1])/(point2[0] - point1[0]))), decimals)
 
 
 # Window name text:
@@ -46,10 +80,11 @@ window_name = "Computer Vision Detector Algorithm"
 # Window width and height:
 window_size = (640, 480)
 # Display mode controller:
-display_mode = 'all'
+display_mode = 'hough'
 # Angular Coefficient start value:
 m = 0.0
 sheet_distance = 0.0
+min_matches_val = 10
 # Display mode dict for text display:
 display_mode_text_dict = {'default': 'Nothing',
 						  'mask': 'Cyan & Magenta',
@@ -59,7 +94,7 @@ display_mode_text_dict = {'default': 'Nothing',
 						  'angular_coef': 'Line & Inclination',
 						  'distance': 'Sheet Distance',
 						  'colorfull_circles': 'Circle Colors',
-						  'brisk': 'Insper Logo',
+						  'brisk': 'Logo',
 						  'all': 'Everything'}
 # Color dict for "paint" elements:
 color_dict = {'cyan': (255, 255, 0),
@@ -155,15 +190,47 @@ while True:
 				sheet_height = 14 # centimeters [H] (between the center of the two circles in the sheet) 
 				frame_distance = 628.5 # pixels [d] (virtual distance between the webcam and the frame)
 				frame_height = sqrt((Bx - Ax)**2 + (By - Ay)**2) # pixels [h] (between the center of the two circles in the frame)
-
+				# Calculates D using the Pinhole principle's formula:
 				sheet_distance = round(sheet_height*frame_distance/frame_height, 2)
+
+	if display_mode == 'brisk' or display_mode == 'all':
+		#
+		brisk_frame = cv2.flip(bgr_frame.copy(), 1)
+		# Loads the logo:
+		logo = cv2.imread('logo.png')
+		# Converts Logo to Grayscale because of BRISK's needs:
+		gray_logo = cv2.cvtColor(logo, cv2.COLOR_BGR2GRAY)
+
+		gray_brisk_frame = cv2.cvtColor(brisk_frame, cv2.COLOR_BGR2GRAY)
+		# Initializes BRISK module:
+		brisk_init = cv2.BRISK_create()
+		# Finds unique keypoints on each of the images (logo and frame):
+		keypoints_logo, descriptors_logo = brisk_init.detectAndCompute(gray_brisk_frame, None)
+		keypoints_frame, descriptors_frame = brisk_init.detectAndCompute(gray_brisk_frame, None)
+		# Sets the matching algorithim:
+		bf = cv2.BFMatcher(cv2.NORM_HAMMING)
+		# Finds matches comparing keypoints using KNN (K-Nearest Neighbors) algorithm:
+		matches = bf.knnMatch(descriptors_logo, descriptors_frame, k=2)
+		# Filters the valid matches as per Lowe's ratio test:
+		valid_matches = [m for m, n in matches if m.distance < 0.7*n.distance]
+		# 
+		if len(valid_matches) > min_matches_val:
+			#
+			framed = find_homography_draw_box(keypoints_logo, keypoints_frame, gray_brisk_frame, gray_logo, valid_matches)
+		else:
+			print("Not enough matches are found {}/{}".format(len(valid_matches), min_matches_val))
+
+
+
+
+		# Recieves frame in Grayscale
 
 	# Displays the resulting frame (Using keyboard to change visualization: simply change the image to be displayed):
 	# Key '1':
 	if display_mode == 'default':
 		text_on_frame(bgr_frame, "Detecting " + display_mode_text_dict[display_mode], (0, 30), 1)
 		cv2.imshow(window_name, bgr_frame)
-	
+		
 	# Key '2':
 	elif display_mode == 'mask':
 		text_on_frame(masked_frame, "Detecting " + display_mode_text_dict[display_mode], (0, 30), 1)
@@ -203,7 +270,10 @@ while True:
 
 	# Key '9':
 	elif display_mode == 'brisk':
-		pass
+		img3 = cv2.drawMatches(logo,keypoints_logo, brisk_frame, keypoints_frame, valid_matches, None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+		#plt.figure(figsize=(13, 8))
+		cv2.imshow(window_name, img3)
+
 
 	# Key '0':
 	elif display_mode == 'all':
@@ -223,38 +293,48 @@ while True:
 		break
 	# Capture a frame and saves it as a .jpeg file:
 	elif key_input == ord('c'):
-		cv2.imwrite(name, 'single_frame.jpg')
+		cv2.imwrite(bgr_frame, 'single_frame.jpg')
+		print(display_mode)
 	# Default visualization:
 	elif key_input == ord('1'):
 		display_mode = 'default'
+		print(display_mode)
 	# Cyan and Magenta Mask visualization:
 	elif key_input == ord('2'):
 		display_mode = 'mask'
+		print(display_mode)
 	# Edge Detection visualization:
 	elif key_input == ord('3'):
 		display_mode = 'canny'
+		print(display_mode)
 	# Circles Detection visualization:
 	elif key_input == ord('4'):
 		display_mode = 'hough'
+		print(display_mode)
 	# Line Connecting Circles visualization:
 	elif key_input == ord('5'):
 		display_mode = 'line'
+		print(display_mode)
 	# Line's Angular Coefficient visualization:
 	elif key_input == ord('6'):
 		display_mode = 'angular_coef'
+		print(display_mode)
 	# Sheet Distance visualization:
 	elif key_input == ord('7'):
 		display_mode = 'distance'
+		print(display_mode)
 	# Circle Color Detection visualization:
 	elif key_input == ord('8'):
 		display_mode = 'colorfull_circles'
+		print(display_mode)
 	# Logo Finder visualization:
 	elif key_input == ord('9'):
-		display_mode == 'brisk'
+		display_mode = 'brisk'
+		print(display_mode)
 	# All Previous visualizations combined:
 	elif key_input == ord('0'):
 		display_mode = 'all'
-
+		print(display_mode)
 	
 
 # When everything done, release the capture
