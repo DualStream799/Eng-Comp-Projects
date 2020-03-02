@@ -6,7 +6,7 @@ __author__ = "DualStream799"
 
 from matplotlib import pyplot as plt
 from heapq import nlargest
-from math import degrees
+from math import degrees, sqrt
 import numpy as np
 import time
 import cv2
@@ -25,45 +25,45 @@ def frame_flip(capture, flip=False, flip_mode=0):
 		return cv2.flip(frame, 20)
 	else:
 		return frame
-	
 
 
 def output_selector(window_name, output_frame):
 	# Displays the resulting frame:
 	cv2.imshow(window_name, output_frame)
 
-
 def text_on_frame(frame, text, position, thickness, font_size=1, text_color=(255, 255, 255), shadow_color=(128, 128, 128), font_style=cv2.FONT_HERSHEY_SIMPLEX, line_style=cv2.LINE_AA):
 	"""Displays a text on the frame with a shadow behind it for better visualization on any background"""
 	cv2.putText(frame, text, position, font_style, font_size, shadow_color, thickness+1, line_style)
 	cv2.putText(frame, text, position, font_style, font_size, text_color, thickness, line_style)
-	
-
-def capture_single_frame(frame, name='single_frame.jpg'):
-	"""Saves a frame captured by OpenCV"""
-	pass
 
 def angular_coefficient(point1, point2, decimals=0):
-	""""""
+	"""Calculates the angular coefficient if a line between two points using the current formula: (y - y0) = m*(x - x0)"""
 	return round(degrees((point2[1] - point1[1])/(point2[0] - point1[0])), decimals)
 
 
 # Window name text:
 window_name = "Computer Vision Detector Algorithm"
 # Window width and height:
-window_size = (640,480)
+window_size = (640, 480)
 # Display mode controller:
-display_mode = 'canny'
+display_mode = 'all'
+# Angular Coefficient start value:
+m = 0.0
+sheet_distance = 0.0
 # Display mode dict for text display:
 display_mode_text_dict = {'default': 'Nothing',
 						  'mask': 'Cyan & Magenta',
 						  'canny': 'Edges',
-						  'hough': 'Circles'}
-# 
+						  'hough': 'Circles',
+						  'line': 'Line',
+						  'angular_coef': 'Line & Inclination',
+						  'distance': 'Sheet Distance',
+						  'colorfull_circles': 'Circle Colors',
+						  'brisk': 'Insper Logo',
+						  'all': 'Everything'}
+# Color dict for "paint" elements:
 color_dict = {'cyan': (255, 255, 0),
 			  'magenta': (255, 0, 255)}
-# Angular Coefficient start value:
-m = 0.0
 
 
 # Parameters to use when opening the webcam:
@@ -82,8 +82,6 @@ while True:
 	rgb_frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
 	# Converts frame from RGB to HSV:
 	hsv_frame = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2HSV)
-
-
 	# Cyan's Hue value of HSV color space:
 	cyan_hue = 180
 	# Magenta's Hue value of HSV color space:
@@ -101,8 +99,6 @@ while True:
 	fused_mask = cv2.bitwise_or(cyan_mask, magenta_mask)
 	# Filtering the original image using the mask (There's color only where the mask is white):
 	masked_frame = cv2.bitwise_and(bgr_frame, bgr_frame, mask=fused_mask)
-
-
 	# Bluring the grayscale frame in order to enhance edge detection:
 	blured_frame = cv2.GaussianBlur(gray_frame, ksize=(5, 5), sigmaX=0)
 	# Using Canny's algorithm to detect edges:
@@ -112,67 +108,109 @@ while True:
 	# Converting 'edges_frame' to BGR in order to get colorfull circles:
 	color_edges_frame = cv2.cvtColor(edges_frame, cv2.COLOR_GRAY2BGR)	
 	# Only if circles detected (avoids that 'None' reaches the 'for' loop and crashes the program):
-	if circles is not None and display_mode == 'hough':
+	if circles is not None and (display_mode == 'hough' or display_mode == 'line' or display_mode == 'angular_coef' or display_mode == 'distance' or display_mode == 'colorfull_circles' or display_mode == 'all'):
 		# Lists to store only valid circles (better explanation below):
 		valid_circles = []
 		# Draws all circles detected in the frame:
 		for circle in circles[0]:
 			# Parameters obtained by 'cv2.HoughCircles':
-			x_pos, y_pos, radius_size = circle
-			# Gets the 
-			circle_color = (0,255,255) #tuple([int(val) for val in masked_frame[int(x_pos), int(y_pos), :]])
-			# Draws the circle on the frame:
-			cv2.circle(color_edges_frame, center=(x_pos, y_pos), radius=radius_size, color=circle_color, thickness=2)
-			# if color in cyan or magenta ranges, print the color name on the frame
-		
+			x_pos, y_pos, radius_size = circle		
+
 			# Checks if the center of the detected circles are inside the valid region of the color masks and stores the circle's data and wich mask were detected (otherwise, the circles are false and are not stored:
 			if cyan_mask[int(y_pos), int(x_pos)] == 255:
 				valid_circles.append(['cyan', list(circle)])
 			elif magenta_mask[int(y_pos), int(x_pos)] == 255:
 				valid_circles.append(['magenta', list(circle)])
 
+			if display_mode != 'colorfull_circles':
+				# Draws the circle on the frame:
+				cv2.circle(color_edges_frame, center=(x_pos, y_pos), radius=radius_size, color=(0,255,255), thickness=2)
+			
 		# If two circles or more were detected, filter only the two largest ones (based on masks only discards false detections):
-		if len(valid_circles) >= 2:
+		if len(valid_circles) >= 2 and (display_mode == 'line' or display_mode == 'angular_coef' or display_mode == 'distance' or display_mode == 'colorfull_circles' or display_mode == 'all'):
 			# Finds the two largest circles (the ones with bigger radius):
-			largest_circles = nlargest(2, valid_circles, key=lambda x:x[1][2])	
-			# Draws a line between the circles' center:
-			cv2.line(color_edges_frame, (largest_circles[0][1][0], largest_circles[0][1][1]), (largest_circles[1][1][0], largest_circles[1][1][1]), (0,0,255), 2)
-			# Calculates the line's angular coeficient and updates the varible:
-			m = angular_coefficient(largest_circles[0][1], largest_circles[1][1])
-			# Draws the circles' color above the detected circles:
-			_ = [text_on_frame(color_edges_frame, circle[0], (int(circle[1][0]), int(circle[1][1]+circle[1][2]+30)), 1, text_color=color_dict[circle[0]])  for circle in largest_circles]
+			largest_circles = nlargest(2, valid_circles, key=lambda x:x[1][2])
 
+			if display_mode == 'line' or display_mode == 'angular_coef' or display_mode == 'all':
+				# Draws a line between the circles' center:
+				cv2.line(color_edges_frame, (largest_circles[0][1][0], largest_circles[0][1][1]), (largest_circles[1][1][0], largest_circles[1][1][1]), (0,0,255), 2)
 
+			if display_mode == 'angular_coef' or display_mode == 'all':
+				# Calculates the line's angular coeficient and updates the varible:
+				m = angular_coefficient(largest_circles[0][1], largest_circles[1][1])
 
-	# Display the resulting frame (USE KEYBOARD TO CHANGE VISUALIZATION: simply change the image to be displayed):
+			if display_mode == 'colorfull_circles' or display_mode == 'all':
+				# Draws the circles with the correspondent color:
+				_ = [cv2.circle(color_edges_frame, center=(circle[1][0], circle[1][1]), radius=circle[1][2], color=color_dict[circle[0]], thickness=2)  for circle in largest_circles]
+				# Draws the circles' color above the detected circles:
+				_ = [text_on_frame(color_edges_frame, circle[0], (int(circle[1][0]), int(circle[1][1]+circle[1][2]+30)), 1, text_color=color_dict[circle[0]])  for circle in largest_circles]
+
+			if display_mode == 'distance' or display_mode == 'all':
+				# Calculates the lenght of the line:
+				Ax = largest_circles[0][1][0]
+				Ay = largest_circles[0][1][1]
+				Bx = largest_circles[1][1][0]
+				By = largest_circles[1][1][1]
+				# Values obtained from calibration fixing D = 32cm (between the webcam and the sheet):
+				sheet_height = 14 # centimeters [H] (between the center of the two circles in the sheet) 
+				frame_distance = 628.5 # pixels [d] (virtual distance between the webcam and the frame)
+				frame_height = sqrt((Bx - Ax)**2 + (By - Ay)**2) # pixels [h] (between the center of the two circles in the frame)
+
+				sheet_distance = round(sheet_height*frame_distance/frame_height, 2)
+
+	# Displays the resulting frame (Using keyboard to change visualization: simply change the image to be displayed):
+	# Key '1':
 	if display_mode == 'default':
 		text_on_frame(bgr_frame, "Detecting " + display_mode_text_dict[display_mode], (0, 30), 1)
 		cv2.imshow(window_name, bgr_frame)
-
+	
+	# Key '2':
 	elif display_mode == 'mask':
 		text_on_frame(masked_frame, "Detecting " + display_mode_text_dict[display_mode], (0, 30), 1)
 		cv2.imshow(window_name, masked_frame)
-
+	
+	# Key '3':
 	elif display_mode == 'canny':
 		text_on_frame(edges_frame, "Detecting " + display_mode_text_dict[display_mode], (0, 30), 1)
 		cv2.imshow(window_name, edges_frame)
-
+	
+	# Key '4':
 	elif display_mode == 'hough':
-		text_on_frame(color_edges_frame, "{}*".format(int(m)), (window_size[0]-100, 30), 1)
+		text_on_frame(color_edges_frame, "Detecting " + display_mode_text_dict[display_mode], (0, 30), 1)
+		cv2.imshow(window_name, color_edges_frame)
+	
+	# Key '5':
+	elif display_mode == 'line':
+		text_on_frame(color_edges_frame, "Detecting " + display_mode_text_dict[display_mode], (0, 30), 1)
+		cv2.imshow(window_name, color_edges_frame)
+	
+	# Key '6':
+	elif display_mode == 'angular_coef':
+		text_on_frame(color_edges_frame, "Inclination: {}".format(int(m)), (0, window_size[1] - 5), 1)
+		text_on_frame(color_edges_frame, "Detecting " + display_mode_text_dict[display_mode], (0, 30), 1)
+		cv2.imshow(window_name, color_edges_frame)
+	
+	# Key '7':
+	elif display_mode == 'distance':
+		text_on_frame(color_edges_frame, "Sheet Distance: {}cm".format(sheet_distance), (0, window_size[1] - 5), 1)
 		text_on_frame(color_edges_frame, "Detecting " + display_mode_text_dict[display_mode], (0, 30), 1)
 		cv2.imshow(window_name, color_edges_frame)
 
-	elif display_mode == 'line':
-		pass
-	elif display_mode == 'angular_coef':
-		pass
-	elif display_mode == 'distance':
-		pass
-	elif display_mode == 'all':
-		pass
-	else:
-		cv2.imshow(window_name, bgr_frame)
+	# Key '8':
+	elif display_mode == 'colorfull_circles':
+		text_on_frame(color_edges_frame, "Detecting " + display_mode_text_dict[display_mode], (0, 30), 1)
+		cv2.imshow(window_name, color_edges_frame)
 
+	# Key '9':
+	elif display_mode == 'brisk':
+		pass
+
+	# Key '0':
+	elif display_mode == 'all':
+		text_on_frame(color_edges_frame, "Sheet Distance: {}cm".format(sheet_distance), (0, window_size[1] - 5), 1)
+		text_on_frame(color_edges_frame, "Inclination: {}".format(int(m)), (0, window_size[1] - 35), 1)
+		text_on_frame(color_edges_frame, "Detecting " + display_mode_text_dict[display_mode], (0, 30), 1)
+		cv2.imshow(window_name, color_edges_frame)
 
 
 	# Waits for a certain time (in milisseconds) for a key input ('0xFF' is used to handle input changes caused by NumLock):
@@ -180,7 +218,6 @@ while True:
 	key_input = cv2.waitKey(delay_ms) & 0xFF
 
 	# Display Mode Switch:
-
 	# Exit the program:
 	if  key_input == ord('q'):	
 		break
@@ -199,6 +236,24 @@ while True:
 	# Circles Detection visualization:
 	elif key_input == ord('4'):
 		display_mode = 'hough'
+	# Line Connecting Circles visualization:
+	elif key_input == ord('5'):
+		display_mode = 'line'
+	# Line's Angular Coefficient visualization:
+	elif key_input == ord('6'):
+		display_mode = 'angular_coef'
+	# Sheet Distance visualization:
+	elif key_input == ord('7'):
+		display_mode = 'distance'
+	# Circle Color Detection visualization:
+	elif key_input == ord('8'):
+		display_mode = 'colorfull_circles'
+	# Logo Finder visualization:
+	elif key_input == ord('9'):
+		display_mode == 'brisk'
+	# All Previous visualizations combined:
+	elif key_input == ord('0'):
+		display_mode = 'all'
 
 	
 
