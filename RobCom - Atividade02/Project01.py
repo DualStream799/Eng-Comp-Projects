@@ -80,7 +80,7 @@ window_name = "Computer Vision Detector Algorithm"
 # Window width and height:
 window_size = (640, 480)
 # Display mode controller:
-display_mode = 'hough'
+display_mode = 'default'
 # Angular Coefficient start value:
 m = 0.0
 sheet_distance = 0.0
@@ -193,7 +193,7 @@ while True:
 				# Calculates D using the Pinhole principle's formula:
 				sheet_distance = round(sheet_height*frame_distance/frame_height, 2)
 
-	if display_mode == 'brisk' or display_mode == 'all':
+	if display_mode == 'brisk':
 		#
 		brisk_frame = cv2.flip(bgr_frame.copy(), 1)
 		# Loads the logo:
@@ -205,7 +205,7 @@ while True:
 		# Initializes BRISK module:
 		brisk_init = cv2.BRISK_create()
 		# Finds unique keypoints on each of the images (logo and frame):
-		keypoints_logo, descriptors_logo = brisk_init.detectAndCompute(gray_brisk_frame, None)
+		keypoints_logo, descriptors_logo = brisk_init.detectAndCompute(gray_logo, None)
 		keypoints_frame, descriptors_frame = brisk_init.detectAndCompute(gray_brisk_frame, None)
 		# Sets the matching algorithim:
 		bf = cv2.BFMatcher(cv2.NORM_HAMMING)
@@ -271,9 +271,7 @@ while True:
 	# Key '9':
 	elif display_mode == 'brisk':
 		img3 = cv2.drawMatches(logo,keypoints_logo, brisk_frame, keypoints_frame, valid_matches, None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-		#plt.figure(figsize=(13, 8))
 		cv2.imshow(window_name, img3)
-
 
 	# Key '0':
 	elif display_mode == 'all':
@@ -293,8 +291,8 @@ while True:
 		break
 	# Capture a frame and saves it as a .jpeg file:
 	elif key_input == ord('c'):
-		cv2.imwrite(bgr_frame, 'single_frame.jpg')
-		print(display_mode)
+		cv2.imwrite('single_frame.jpg', cv2.flip(bgr_frame, 1))
+		print('frame aptured')
 	# Default visualization:
 	elif key_input == ord('1'):
 		display_mode = 'default'
