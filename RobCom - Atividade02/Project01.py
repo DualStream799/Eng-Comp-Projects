@@ -223,7 +223,6 @@ while True:
 
 
 
-		# Recieves frame in Grayscale
 
 	# Displays the resulting frame (Using keyboard to change visualization: simply change the image to be displayed):
 	# Key '1':
@@ -334,7 +333,6 @@ while True:
 		display_mode = 'all'
 		print(display_mode)
 	
-
 # When everything done, release the capture
 cap.release()
 cv2.destroyAllWindows()
