@@ -107,7 +107,7 @@ while True:
 	# Using Canny's algorithm to detect edges:
 	edges_frame = cv2.Canny(blured_frame, 50, 150, apertureSize=3)
 	
-	if display_mode == 'hough' or display_mode == 'all':
+	if display_mode == 'hough' or display_mode == 'projection' or display_mode == 'all':
 		# Makes a copy of the captured frame:
 		lines_frame = bgr_frame.copy()
 		# Using Hough's algorithm to detect lines:
@@ -121,39 +121,42 @@ while True:
 #				color = (255, 0, 255)
 #				cv2.line(lines_frame, point1, point2, color, 2)
 #			print(len(hough_points))
-
 		lines_list = []
-
 		if hough_rho_theta is not None:
-			print(type(hough_rho_theta))
-			for rho, theta in hough_rho_theta[0]:
-				# Converts the lines detected from polar to cartesian representation:
-				a = np.cos(theta)
-				b = np.sin(theta)
-				x0 = a*rho
-				y0 = b*rho
-				x1 = int(x0 + 1000*(-b))
-				y1 = int(y0 + 1000*(a))
-				x2 = int(x0 - 1000*(-b))
-				y2 = int(y0 - 1000*(a))
-				# Creates two point from the positions calculated previously:
-				point1 = (x1, y1)
-				point2 = (x2, y2)
-				# Calculates algular coefficient for each one of the lines created:
-				m = angular_coefficient(point1, point2, decimals=5)
-				# Stores the two points and the algular coefficient:
-				lines_list.append((point1, point2, m))
+			for line in hough_rho_theta:
+				for rho, theta in line:
+					# Converts the lines detected from polar to cartesian representation:
+					a = np.cos(theta)
+					b = np.sin(theta)
+					x0 = a*rho
+					y0 = b*rho
+					x1 = int(x0 + 1000*(-b))
+					y1 = int(y0 + 1000*(a))
+					x2 = int(x0 - 1000*(-b))
+					y2 = int(y0 - 1000*(a))
+					# Creates two point from the positions calculated previously:
+					point1 = (x1, y1)
+					point2 = (x2, y2)
+					# Calculates algular coefficient for each one of the lines created:
+					try:
+						m = angular_coefficient(point1, point2, decimals=5)
+						# Stores the two points and the algular coefficient:
+						lines_list.append((point1, point2, m))
+					except ZeroDivisionError:
+						pass
 
-				cv2.line(lines_frame, point1, point2, (255, 0, 255), 2)
-
-			# Draws all the lines:
+					cv2.line(lines_frame, point1, point2, (255, 0, 255), 2)
+				# Draws all the lines:
 			#_ = [cv2.line(lines_frame, line[0], line[1], (255, 0, 255), 2) for line in lines_list]
-			
 
 		if  display_mode == 'projection' or display_mode == 'all':
 			# Makes a copy of the captured frame:
 			vanishing_frame = bgr_frame.copy()
+			print(len(lines_list))
 			if len(lines_list) >= 2:
+				middle_1 = int(len(lines_list)/2)
+				middle_2 = middle_1 - 1
+				
 				# Finds two lines with the highest difference on 'm':
 				min_inc_line = nsmallest(1, lines_list, key=lambda x: x[2])
 				max_inc_line = nlargest(1, lines_list, key=lambda x: x[2])
@@ -179,7 +182,7 @@ while True:
 	# Key '4':
 	elif display_mode == 'projection':
 		text_on_frame(vanishing_frame, "Detecting " + display_mode_text_dict[display_mode], (0, 30), 1)
-		cv2.imshow(window_name, lines_frame)
+		cv2.imshow(window_name, vanishing_frame)
 
 
 	# Waits for a certain time (in milisseconds) for a key input ('0xFF' is used to handle input changes caused by NumLock):
