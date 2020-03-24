@@ -10,8 +10,6 @@ from math import atan, degrees, sqrt
 import numpy as np
 import time
 import cv2
-# Importing function from external source:
-#from homography import find_homography_draw_box
 
 
 def find_homography_draw_box(kp1, kp2, img_cena, img_original, good):
