@@ -70,7 +70,11 @@ dev_mode = True
 # Angular Coefficient start value:
 m = 0.0
 sheet_distance = 0.0
-min_matches_val = 10
+min_matches_val = 1
+# Line Filters:
+min_proj_x = 400 # vertical lines' filter
+min_proj_y = 200 # horizontal lines' filter
+min_45_deg = 100 # 45º lines' filter
 # Display mode dict for text display:
 display_mode_text_dict = {'default': 'Nothing',
 						  'canny': 'Edges',
@@ -134,37 +138,36 @@ while True:
 					y1 = int(y0 + 1000*(a))
 					x2 = int(x0 - 1000*(-b))
 					y2 = int(y0 - 1000*(a))
-					# Creates two point from the positions calculated previously:
-					point1 = (x1, y1)
-					point2 = (x2, y2)
-					# Calculates algular coefficient for each one of the lines created:
-					try:
+					# Calculates line's filter parameters:
+					proj_x = abs(x1 - x2) # small values means a almost vertical line
+					proj_y = abs(y1 - y2) # snall values means a almost horizontal line
+					proj_assimetry = abs(proj_x - proj_y) # small values means a 45º line
+					# Gets rid of almost horizontal or vertical lines (and avoids 'angular_coefficient' method gets 'ZeroDivisionError'):
+					if  proj_x > min_proj_x and proj_y > min_proj_y:
+						# Creates two point from the positions calculated previously:
+						point1 = (x1, y1)
+						point2 = (x2, y2)
+						# Calculates angular coefficient:
 						m = angular_coefficient(point1, point2, decimals=5)
 						# Stores the two points and the algular coefficient:
-						lines_list.append((point1, point2, m))
-					except ZeroDivisionError:
-						pass
+						lines_list.append((point1, point2, m, proj_assimetry))
+						# Draws the resulting line on the frame:
+						cv2.line(lines_frame, point1, point2, (255, 0, 255), 1)
 
-					cv2.line(lines_frame, point1, point2, (255, 0, 255), 2)
-				# Draws all the lines:
-			#_ = [cv2.line(lines_frame, line[0], line[1], (255, 0, 255), 2) for line in lines_list]
 
 		if  display_mode == 'projection' or display_mode == 'all':
 			# Makes a copy of the captured frame:
-			vanishing_frame = bgr_frame.copy()
-			print(len(lines_list))
+			vanishing_frame = lines_frame.copy()
+			
+			# Checks if there's at least two lines to calculate the vanishing point:
 			if len(lines_list) >= 2:
-				middle_1 = int(len(lines_list)/2)
-				middle_2 = middle_1 - 1
-				
-				# Finds two lines with the highest difference on 'm':
-				min_inc_line = nsmallest(1, lines_list, key=lambda x: x[2])
-				max_inc_line = nlargest(1, lines_list, key=lambda x: x[2])
+				# Finds the two lines closest to 45º:
+				min_inc_line = nsmallest(2, lines_list, key=lambda x: x[3])
 				# Calculates the position of the vanishing point using the the two lines found:
 				#calculate_vanishing_point()
 
 
-				print(min_inc_line, max_inc_line)
+				print(min_inc_line[0])
 
 	# Displays the resulting frame (Using keyboard to change visualization: simply change the image to be displayed):
 	# Key '1':
@@ -183,7 +186,6 @@ while True:
 	elif display_mode == 'projection':
 		text_on_frame(vanishing_frame, "Detecting " + display_mode_text_dict[display_mode], (0, 30), 1)
 		cv2.imshow(window_name, vanishing_frame)
-
 
 	# Waits for a certain time (in milisseconds) for a key input ('0xFF' is used to handle input changes caused by NumLock):
 	delay_ms = 60
@@ -215,8 +217,6 @@ while True:
 	elif key_input == ord('d'):
 		dev_mode = not dev_mode
 		print("dev_mode:", dev_mode)
-
-
 
 # When everything done, release the capture
 cap.release()
