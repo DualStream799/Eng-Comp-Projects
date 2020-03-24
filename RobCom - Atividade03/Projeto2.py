@@ -8,6 +8,7 @@ from matplotlib import pyplot as plt
 from heapq import nlargest, nsmallest
 from math import atan, degrees, sqrt
 import numpy as np
+import argparse
 import time
 import cv2
 
@@ -56,8 +57,73 @@ def calculate_vanishing_point(p1, p2, q1, q2):
 	xi = (h2 - h1)/(m1 - m2)
 	yi = m1*xi + h1
 	
-	return (xi, yi)
+	return (int(xi), int(yi))
 
+
+print("Para executar:\npython3 Projeto2.py --prototxt MobileNetSSD_deploy.prototxt.txt --model MobileNetSSD_deploy.caffemodel\n")
+
+
+# construct the argument parse and parse the arguments
+ap = argparse.ArgumentParser()
+ap.add_argument("-p", "--prototxt", required=True,
+	help="path to Caffe 'deploy' prototxt file")
+ap.add_argument("-m", "--model", required=True,
+	help="path to Caffe pre-trained model")
+ap.add_argument("-c", "--confidence", type=float, default=0.2,
+	help="minimum probability to filter weak detections")
+args = vars(ap.parse_args())
+# initialize the list of class labels MobileNet SSD was trained to
+# detect, then generate a set of bounding box colors for each class
+CLASSES = ["background", "aeroplane", "bicycle", "bird", "boat",
+	"bottle", "bus", "car", "cat", "chair", "cow", "diningtable",
+	"dog", "horse", "motorbike", "person", "pottedplant", "sheep",
+	"sofa", "train", "tvmonitor"]
+COLORS = np.random.uniform(0, 255, size=(len(CLASSES), 3))
+# load our serialized model from disk
+print("[INFO] loading model...")
+net = cv2.dnn.readNetFromCaffe(args["prototxt"], args["model"])
+# load the input image and construct an input blob for the image
+# by resizing to a fixed 300x300 pixels and then normalizing it
+# (note: normalization is done via the authors of the MobileNet SSD
+# implementation)
+def mobilenet_detect(frame):
+	image = frame.copy()
+	(h, w) = image.shape[:2]
+	blob = cv2.dnn.blobFromImage(cv2.resize(image, (300, 300)), 0.007843, (300, 300), 127.5)
+	# pass the blob through the network and obtain the detections and
+	# predictions
+	print("[INFO] computing object detections...")
+	net.setInput(blob)
+	detections = net.forward()
+	results = []
+	# loop over the detections
+	for i in np.arange(0, detections.shape[2]):
+		# extract the confidence (i.e., probability) associated with the
+		# prediction
+		confidence = detections[0, 0, i, 2]
+		# filter out weak detections by ensuring the `confidence` is
+		# greater than the minimum confidence
+		if confidence > args["confidence"]:
+			# extract the index of the class label from the `detections`,
+			# then compute the (x, y)-coordinates of the bounding box for
+			# the object
+			idx = int(detections[0, 0, i, 1])
+			box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+			(startX, startY, endX, endY) = box.astype("int")
+
+			# display the prediction
+			label = "{}: {:.2f}%".format(CLASSES[idx], confidence * 100)
+			print("[INFO] {}".format(label))
+			cv2.rectangle(image, (startX, startY), (endX, endY),
+				COLORS[idx], 2)
+			y = startY - 15 if startY - 15 > 15 else startY + 15
+			cv2.putText(image, label, (startX, y),
+				cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLORS[idx], 2)
+
+			results.append((CLASSES[idx], confidence*100, (startX, startY),(endX, endY) ))
+
+	# show the output image
+	return image, results
 
 
 # Window name text:
@@ -80,6 +146,7 @@ display_mode_text_dict = {'default': 'Nothing',
 						  'canny': 'Edges',
 						  'hough': 'Perspective Lines',
 						  'projection': 'Vanishing Point',
+						  'mobilenet': 'Object via MobileNet',
 						  'all': 'Everything'}
 # Color dict for "paint" elements:
 color_dict = {'cyan': (255, 255, 0),
@@ -158,16 +225,36 @@ while True:
 		if  display_mode == 'projection' or display_mode == 'all':
 			# Makes a copy of the captured frame:
 			vanishing_frame = lines_frame.copy()
-			
 			# Checks if there's at least two lines to calculate the vanishing point:
 			if len(lines_list) >= 2:
 				# Finds the two lines closest to 45º:
-				min_inc_line = nsmallest(2, lines_list, key=lambda x: x[3])
+				closest_45_lines = nsmallest(2, lines_list, key=lambda x: x[3])
+				# Gets the two points for each one of the two lines:
+				line1_p1 = closest_45_lines[0][0]
+				line1_p2 = closest_45_lines[0][1]
+				line2_p1 = closest_45_lines[1][0]
+				line2_p2 = closest_45_lines[1][1]
 				# Calculates the position of the vanishing point using the the two lines found:
-				#calculate_vanishing_point()
+
+				## MAKE THE PROGRAM KNOWS WHICH LINES ARE +45 AND -45 DEGREES TO FIND A BETTER VANISHING POINT
+
+				# Draws the selected lines on the frame:
+				cv2.line(vanishing_frame, line1_p1, line1_p2, (0, 255, 255), 1)
+				cv2.line(vanishing_frame, line2_p1, line2_p2, (0, 255, 255), 1)
+
+				try:
+					vanishing_point = calculate_vanishing_point(line1_p1, line1_p2, line2_p1, line2_p2)
+					# Draws vanishing point as a small circle:
+					cv2.circle(vanishing_frame, vanishing_point, 5, (0,0,255), -1)
+				except ZeroDivisionError:
+					pass
 
 
-				print(min_inc_line[0])
+	if  display_mode == 'mobilenet' or display_mode == 'all':
+			# Makes a copy of the captured frame and makes detection:
+			mobilenet_frame, detection_data = mobilenet_detect(bgr_frame.copy())
+			# Displays data from the detection:
+			_ = [print(data) for data in detection_data] # ("CLASS", confidence, (x1, y1, x2, y3))	
 
 	# Displays the resulting frame (Using keyboard to change visualization: simply change the image to be displayed):
 	# Key '1':
@@ -186,6 +273,10 @@ while True:
 	elif display_mode == 'projection':
 		text_on_frame(vanishing_frame, "Detecting " + display_mode_text_dict[display_mode], (0, 30), 1)
 		cv2.imshow(window_name, vanishing_frame)
+	# Key '5':
+	elif display_mode == 'mobilenet':
+		text_on_frame(vanishing_frame, "Detecting " + display_mode_text_dict[display_mode], (0, 30), 1)
+		cv2.imshow(window_name, mobilenet_frame)
 
 	# Waits for a certain time (in milisseconds) for a key input ('0xFF' is used to handle input changes caused by NumLock):
 	delay_ms = 60
@@ -211,9 +302,14 @@ while True:
 	elif key_input == ord('3'):
 		display_mode = 'hough'
 		print(display_mode)
+	# Vanishing Point Detection visualization:
 	elif key_input == ord('4'):
 		display_mode = 'projection'
 		print(display_mode)
+	# MobileNet Object Detection visualization:
+	elif key_input == ord('5'):
+		display_mode = 'mobilenet'
+		print(display_mode)	
 	elif key_input == ord('d'):
 		dev_mode = not dev_mode
 		print("dev_mode:", dev_mode)
